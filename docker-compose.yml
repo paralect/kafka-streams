@@ -1,0 +1,57 @@
+version: '2.4'
+services:
+  zookeeper:
+    image: bitnami/zookeeper:3
+    ports:
+      - 2181:2181
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+    volumes:
+      - ./zookeeper_data:/bitnami
+    container_name: zookeeper
+  kafka:
+    image: bitnami/kafka:2
+    ports:
+      - 9092:9092
+      - 29092:29092
+    environment:
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      - KAFKA_LISTENERS=PLAINTEXT://:9092,PLAINTEXT_HOST://:29092
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+    depends_on:
+      - zookeeper
+    healthcheck:
+      test: [ "CMD", "kafka-topics.sh", "--zookeeper", "zookeeper:2181", "--list" ]
+      interval: 10s
+      retries: 5
+    volumes:
+      - ./kafka_data:/bitnami/kafka
+    container_name: kafka
+  stream:
+    image: stream:latest
+    environment:
+      - KAFKA_HOST=kafka
+      - KAFKA_PORT=9092
+      - KAFKA_TOPIC=meetups
+      - KAFKA_MIRROR_TOPIC=meetups-mirror
+    build:
+      context: 'stream'
+    depends_on:
+      - kafka
+      - meetups
+    container_name: stream
+  meetups:
+    image: meetups:latest
+    build:
+      context: 'meetups'
+    environment:
+      - KAFKA_HOST=kafka
+      - KAFKA_PORT=9092
+      - KAFKA_MEETUP_TOPIC=meetups
+      - KAFKA_CREATE_TOPICS=meetups,meetups-mirror
+    depends_on:
+      kafka:
+        condition: service_healthy
+    container_name: meetups
